@@ -1,11 +1,3 @@
-r"""Trains a convolution net model class for music autofill.
-
-Example usage:
-    $ bazel run :basic_autofill_cnn_train -- \
-        --run_dir=/tmp/cnn_autofill_logs --log_progress \
-        --maskout_method=random_patches \
-        --hparams='{"batch_size":20, "num_layers":16, "num_filters":128}'
-"""
 import os
 import time
 import sys
@@ -15,28 +7,23 @@ import yaml
 import numpy as np
 import tensorflow as tf
 
-from magenta.models.basic_autofill_cnn import data_tools
-from magenta.models.basic_autofill_cnn import summary_tools
-from magenta.models.basic_autofill_cnn.basic_autofill_cnn_graph import BasicAutofillCNNGraph
-from magenta.models.basic_autofill_cnn.basic_autofill_cnn_graph import build_placeholders_initializers_graph
-from magenta.models.basic_autofill_cnn.hparams_tools import Hyperparameters
+import data_tools
+import summary_tools
+from graph import BasicAutofillCNNGraph
+from graph import build_placeholders_initializers_graph
+from hparams_tools import Hyperparameters
 
 
-# '/u/huangche/data/bach/instrs=4_duration=0.250_sep=True',
-#    '/u/huangche/data/bach/qbm120/instrs=4_duration=0.125_sep=True',
-#    'input_dir', '/Tmp/huangche/data/bach/qbm120/instrs=4_duration=0.125_sep=True',
 FLAGS = tf.app.flags.FLAGS
-# TODO(annahuang): Set the default input and output_dir to None for opensource.
-#    'input_dir', '/data/lisatmp4/huangche/data/',
 tf.app.flags.DEFINE_string(
-    'input_dir', '/data/lisatmp4/huangche/data/',
+    'data_dir', None,
     'Path to the base directory for different datasets.')
-tf.app.flags.DEFINE_string('run_dir', '/u/huangche/logs',
+tf.app.flags.DEFINE_string('log_dir', None,
                            'Path to the directory where checkpoints and '
                            'summary events will be saved during training and '
                            'evaluation. Multiple runs can be stored within the '
-                           'parent directory of `run_dir`. Point TensorBoard '
-                           'to the parent directory of `run_dir` to see all '
+                           'parent directory of `log_dir`. Point TensorBoard '
+                           'to the parent directory of `log_dir` to see all '
                            'your runs.')
 tf.app.flags.DEFINE_bool('log_progress', True,
                          'If False, do not log any checkpoints and summary'
@@ -71,7 +58,7 @@ tf.app.flags.DEFINE_integer('num_filters', 128,
                             'The number of filters for each convolutional '
                             'layer.')
 tf.app.flags.DEFINE_integer('start_filter_size', 3, 'The filter size for the first layer of convoluation')
-# TODO(annahuang): Some are meant to be booleans.
+# TODO: Some are meant to be booleans.
 tf.app.flags.DEFINE_integer('use_residual', 1,
                             '1 specifies use residual, while 0 specifies not '
                             'to.')
@@ -120,17 +107,6 @@ tf.app.flags.DEFINE_bool('use_pop_stats', True,
                          'Save population statistics for use in evaluation time.')
 tf.app.flags.DEFINE_string('run_id', '', 'A run_id to add to directory names to avoid accidentally overwriting when testing same setups.') 
 
-import contextlib
-@contextlib.contextmanager
-def pdb_post_mortem():
-  try:
-    yield
-  except:
-    exc_type, exc_value, exc_traceback = sys.exc_info()
-    if not isinstance(exc_value, (KeyboardInterrupt, SystemExit)):
-      import traceback
-      traceback.print_exception(exc_type, exc_value, exc_traceback)
-      import pdb; pdb.post_mortem()
 
 def estimate_popstats(sv, sess, m, raw_data, encoder, hparams):
   print 'Estimating population statistics...'
@@ -211,7 +187,6 @@ def run_epoch(supervisor,
     # restore main random stream
     np.random.set_state(prev_rng_state)
 
-  # TODO(annahuang): Leaves out last incomplete minibatch, needs wrap around.
   batch_size = m.batch_size
   num_batches = input_data.shape[0] // m.batch_size
 
@@ -242,11 +217,6 @@ def run_epoch(supervisor,
      loss_unmask, reduced_unmask_size, 
      D, reduced_D, mask_size, unreduced_loss,
      learning_rate, lossmask, _) = results
-    #print 'predictions', np.sum(predictions) / np.product(predictions.shape)
-    #print 'D', reduced_D, mask_size
-    #print 'reduced_mask_sizes', reduced_mask_size, reduced_unmask_size
-    #print 'unreduced_loss, loss, total, mask', '%.4f, %.4f, %.4f, %.4f' % (
-    #    np.mean(unreduced_loss), loss, loss_total, loss_mask)
 
     if reduced_unmask_size < 0:
       import pdb; pdb.set_trace()
@@ -270,11 +240,6 @@ def run_epoch(supervisor,
   run_stats['loss_total_%s' % experiment_type] = losses_total.mean
   run_stats['loss_%s' % experiment_type] = losses.mean
 
-  #run_stats['perplexity_mask_%s' % experiment_type] = np.exp(losses_mask.mean)
-  #run_stats['perplexity_unmask_%s' % experiment_type] = (
-  #    np.exp(losses_unmask.mean))
-  #run_stats['perplexity_total_%s' % experiment_type] = np.exp(losses_total.mean)
-  #run_stats['perplexity_%s' % experiment_type] = np.exp(losses.mean)
   run_stats['learning_rate'] = float(learning_rate)
 
   # Make summaries.
@@ -292,14 +257,13 @@ def run_epoch(supervisor,
     tf.logging.info('Previous best validation loss: %.4f.' %
                     (best_validation_loss))
     best_validation_loss = run_stats['loss_%s' % experiment_type]
-    save_path = os.path.join(FLAGS.run_dir, hparams.log_subdir_str,
+    save_path = os.path.join(FLAGS.log_dir, hparams.log_subdir_str,
                              '%s-best_model.ckpt' % hparams.name)
     # Saving the best model thusfar checkpoint.
     best_model_saver.save(sess, save_path)
 
     tf.logging.info('Storing best model so far with loss %.4f at %s.' %
                     (best_validation_loss, save_path))
-    # TODO(annahuang): Remove printouts
     print 'Storing best model so far with loss %.4f at %s.' % (
         best_validation_loss, save_path)
 
@@ -313,7 +277,6 @@ def run_epoch(supervisor,
   tf.logging.info('log lr: %.4f' % np.log2(run_stats['learning_rate']))
   tf.logging.info('time taken: %.4f' % (time.time() - start_time))
 
-  # TODO(annahuang): Remove printouts.
   print '%s, epoch %d: real loss: %.4f, loss (mask): %.4f, ' % (
       experiment_type, epoch_count, run_stats['loss_%s' % experiment_type],
       run_stats['loss_mask_%s' % experiment_type]),
@@ -331,7 +294,7 @@ def main(unused_argv):
   """Builds the graph and then runs training and validation."""
   print 'TensorFlow version:', tf.__version__
 
-  if FLAGS.input_dir is None:
+  if FLAGS.data_dir is None:
     tf.logging.fatal('No input directory was provided.')
 
   print FLAGS.maskout_method, 'seperate', FLAGS.separate_instruments
@@ -367,15 +330,13 @@ def main(unused_argv):
       run_id=FLAGS.run_id)
   
   # Get data.
-  # TODO(annahuang): Use queues.
   train_data, pianoroll_encoder = data_tools.get_data_and_update_hparams(
-      FLAGS.input_dir, hparams, 'train', return_encoder=True)
+      FLAGS.data_dir, hparams, 'train', return_encoder=True)
   valid_data = data_tools.get_data_and_update_hparams(
-      FLAGS.input_dir, hparams, 'valid', return_encoder=False)
+      FLAGS.data_dir, hparams, 'valid', return_encoder=False)
   print '# of train_data:', len(train_data)
   print '# of valid_data:', len(valid_data)
 
-  # TODO(annahuang): Set this according to pitch range.
   best_validation_loss = np.inf
 
   # Build the graph and subsequently running it for train and validation.
@@ -403,7 +364,7 @@ def main(unused_argv):
     best_model_saver = tf.train.Saver()
 
     # Save hparam configs.
-    logdir = os.path.join(FLAGS.run_dir, hparams.log_subdir_str)
+    logdir = os.path.join(FLAGS.log_dir, hparams.log_subdir_str)
     if not os.path.exists(logdir):
       os.makedirs(logdir)
     config_fpath = os.path.join(logdir, 'config')
@@ -418,8 +379,6 @@ def main(unused_argv):
         saver=saver,
         summary_op=None,
         save_model_secs=FLAGS.save_model_secs)
-    #with sv.managed_session('local') as sess:
-    #with sv.managed_session() as sess:
     with sv.PrepareSession() as sess:
       epoch_count = 0
       time_since_improvement = 0
@@ -454,9 +413,9 @@ def main(unused_argv):
         epoch_count += 1
 
     print "best validation loss", best_validation_loss
+    print "Done."
     return best_validation_loss
 
 
 if __name__ == '__main__':
-  with pdb_post_mortem():
-    tf.app.run()
+  tf.app.run()

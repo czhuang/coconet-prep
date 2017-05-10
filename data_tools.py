@@ -247,7 +247,7 @@ DATASET_PARAMS = {
         'pitch_ranges': [36, 88], 'shortest_duration': 0.125, 
         'relative_path': 'bach/qbm120/instrs=4_duration=0.125_sep=True'},
 
-    'bach-16th-priorwork-4_voices': {
+    'jsb-chorales-16th-instrs_separated': {
         'pitch_ranges': [21, 108], 'shortest_duration': 0.125},
     #'bach-16th-priorwork-4_voices': {
     #    'pitch_ranges': [36, 81], 'shortest_duration': 0.125},

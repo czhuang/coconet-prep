@@ -6,7 +6,7 @@ code_dir=$(dirname $0)
 log_dir="$code_dir/logs"
 # Change this to where data is loaded from.
 data_dir="$code_dir/data"
-dataset=jsb-chorales-16th-withvoicing
+dataset=jsb-chorales-16th-instrs_separated
 
 # Data preprocessing.
 crop_piece_len=64
@@ -19,14 +19,14 @@ num_layers=64
 num_filters=128
 
 # Run command.
-python "$code_dir"/basic_autofill_cnn_train.py \
+python "$code_dir"/train.py \
 --log_dir $log_dir \
 --log_process True \
 --data_dir $data_dir \
 --dataset $dataset \
 --crop_piece_len $crop_piece_len \
 --separate_instruments $separate_instruments \
---quantization_level $quantization \
+--quantization_level $quantization_level \
 --maskout_method $maskout_method \
 --model_name DeepStraightConvSpecs \
 --num_layers $num_layers \
