@@ -1,5 +1,7 @@
 #!/bin/bash
 
+source /rap/jvb-000-aa/stack/.bashrc
+
 # Assumes that this script is run from within the Coconet root directory.  Change the following line if this is not the case.
 code_dir=$(dirname $0)
 # Change this to dir for saving experiment logs. 

@@ -5,9 +5,6 @@ import os
 import numpy as np
 import tensorflow as tf
 
-from magenta.music.note_sequence_io import note_sequence_record_iterator
-from magenta.protobuf import music_pb2
-
 import mask_tools
 from pianorolls_lib import PianorollEncoderDecoder
 
@@ -39,23 +36,7 @@ def random_double_or_halftime_pianoroll_from_note_sequence(
     sequence, augment_by_halfing_doubling_durations, encoder):
   if not augment_by_halfing_doubling_durations:
     return encoder.encode(sequence)
-  assert isinstance(sequence, music_pb2.NoteSequence), 'No support for dataaugmentation on non-NoteSequence data yet.'
-  durations = set(note.end_time - note.start_time for note in sequence.notes)
-  longest_to_double = 4
-  shortest_to_half = 0.25
-  duration_augmentation_type = np.random.randint(3)
-  if duration_augmentation_type == KEEP_ORIGINAL_DURATIONS:
-    return encoder.encode(sequence)
-  elif duration_augmentation_type == HALF_TIME:
-    # Half time.
-    if any(duration < shortest_to_half for duration in durations):
-      return encoder.encode(sequence)
-    #print sequence.filename, sequence.id, sequence.collection_name
-    return encoder.encode(sequence, duration_ratio=0.5)
-  else:
-    if any(duration > longest_to_double for duration in durations):
-      return encoder.encode(sequence)
-    return encoder.encode(sequence, duration_ratio=2)
+  assert False, 'Not yet supported in this version.'
 
 
 def random_crop_pianoroll(pianoroll,
@@ -264,7 +245,6 @@ def get_image_data(dataset_name, fold, params):
     return data
   else:
     assert False, 'Dataset %s not yet supported.' % dataset_name
-
 
 
 def get_data_and_update_hparams(basepath, hparams, fold, 
