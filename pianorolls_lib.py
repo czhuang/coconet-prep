@@ -7,7 +7,6 @@ from collections import OrderedDict
 import numpy as np
 
 from magenta.protobuf import music_pb2
-import test_tools
 
 OLD_SETTINGS = True
 
