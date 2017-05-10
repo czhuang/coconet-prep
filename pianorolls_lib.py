@@ -8,40 +8,18 @@ import numpy as np
 
 from magenta.protobuf import music_pb2
 
-OLD_SETTINGS = True
 
-if OLD_SETTINGS:
-  #WOODWIND_QUARTET_PROGRAMS = OrderedDict(
-  #    [(73, 'flute'), (71, 'clarinet'), (68, 'oboe'), (70, 'bassoon')])
-  WOODWIND_QUARTET_PROGRAMS = OrderedDict(
-      [(75, 'flute'), (73, 'clarinet'), (70, 'oboe'), (72, 'bassoon')])
-else:
-  WOODWIND_QUARTET_PROGRAMS = OrderedDict(
-      [(74, 'flute'), (72, 'clarinet'), (69, 'oboe'), (71, 'bassoon')])
-
-# ok this is better with timidity
+# This is better with timidity.
 WOODWIND_QUARTET_PROGRAMS = OrderedDict(
     [(69, 'oboe'), (70, 'english_horn'), (72, 'clarinet'), (71, 'bassoon')])
-
-# In order to have 4 different instruments, not including second violin,
-# and adding in double bass.
-#STRING_QUARTET_PROGRAMS = OrderedDict(
-#    [(41, 'violin'), (42, 'viola'), (43, 'cello'), (44, 'contrabass')])
-STRING_QUARTET_PROGRAMS = OrderedDict(
-    [(41, 'violin'), (41, 'violin'), (42, 'viola'), (43, 'cello')])
-#STRING_QUARTET_PROGRAMS = OrderedDict(
-#    [(43, 'violin'), (43, 'violin'), (42, 'viola'), (41, 'cello')])
-
-CHANNEL_START_INDEXS = OrderedDict([('original_context', 0),
-                                    ('generated_in_mask', 3), ('silence', -4)])
 
 
 SYNTH_MODE = False
 if SYNTH_MODE:
   _DEFAULT_QPM = 60 
 else:
-  _DEFAULT_QPM = 60
   _DEFAULT_QPM = 120
+
 
 class PitchOutOfEncodeRangeError(Exception):
   """Exception for when pitch of note is out of encodings range."""
