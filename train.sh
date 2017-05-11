@@ -17,6 +17,7 @@ quantization_level=0.125  # 16th notes
 maskout_method=balanced_by_scaling
 num_layers=64
 num_filters=128
+batch_size=10
 
 # Run command.
 python "$code_dir"/train.py \
@@ -32,7 +33,7 @@ python "$code_dir"/train.py \
 --num_layers $num_layers \
 --num_filters $num_filters \
 --use_residual 1 \
---batch_size 20 \
+--batch_size $batch_size \
 --mask_indicates_context True \
 --optimize_mask_only False \
 --rescale_loss True \
