@@ -47,11 +47,7 @@ tf.app.flags.DEFINE_integer('encode_silences', False, 'Encode silence as the low
 
 # Model architecture.
 tf.app.flags.DEFINE_string('model_name', None,
-                           'A string specifying the name of the model.  The '
-                           'choices are currently "PitchLocallyConnectedConvSpecs", '
-                           '"PitchFullyConnectedConvSpecs", '
-                           '"DeepStraightConvSpecs", and '
-                           '"DeepStraightConvSpecsWithEmbedding".')
+                           'A string specifying the name of the model.  Not available in the current version.')
 tf.app.flags.DEFINE_integer('num_layers', 64,
                             'The number of convolutional layers.')
 tf.app.flags.DEFINE_integer('num_filters', 128,

@@ -20,7 +20,8 @@ DATASET_PARAMS = {
         'pitch_ranges': [21, 108], 'shortest_duration': 0.25, 'num_instruments': 12,
         'batch_size': 12},
     'jsb-chorales-16th-instrs_separated': {
-        'pitch_ranges': [21, 108], 'shortest_duration': 0.125},
+        'pitch_ranges': [36, 81], 'shortest_duration': 0.125,
+        'num_instruments', 'qpm': 60},
 }
 
 # TODO: not included in this version.
@@ -250,7 +251,6 @@ def get_image_data(dataset_name, fold, params):
 def get_data_and_update_hparams(basepath, hparams, fold, 
                                 update_hparams=True, 
                                 return_encoder=False):
-  """Returns NoteSequences for '4_part_JSB_Chorales' and list of lists for the rest, and updates dataset specific hparams."""
   dataset_name = hparams.dataset
   params = DATASET_PARAMS[dataset_name]
   
@@ -276,11 +276,12 @@ def get_data_and_update_hparams(basepath, hparams, fold,
     for key, value in params.iteritems():
       if hasattr(hparams, key): 
         setattr(hparams, key, value)
-    #FIXME: just for debug
+    #FIXME: just for debug.
     for key in params:
       if hasattr(hparams, key):
         assert getattr(hparams, key) == params[key], 'hparams did not get updated, %r!=%r' % (getattr(hparams, key), params[key])
   if return_encoder and dataset_name not in IMAGE_DATASETS:
+    assert params['shortest_duration'] == hparams.quantization_level, 'The data has a temporal resolution of shortest duration=%r, requested=%r' % (params['shortest_duration'], hparams.quantization_level)
     encoder = PianorollEncoderDecoder(
         shortest_duration=params['shortest_duration'],
         min_pitch=pitch_range[0],

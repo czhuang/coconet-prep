@@ -1,11 +1,13 @@
 import os, sys, time, contextlib, cPickle as pkl, gzip
 from collections import defaultdict
 from datetime import datetime
-import numpy as np, tensorflow as tf
+import numpy as np
+import tensorflow as tf
 
 import mask_tools
 import retrieve_model_tools
 import data_tools
+from npz_to_midi import pianoroll_to_midi
 import util
 
 FLAGS = tf.app.flags.FLAGS
@@ -24,13 +26,14 @@ def main(unused_argv):
   hparam_updates = {'use_pop_stats': FLAGS.use_pop_stats}
   wmodel = retrieve_model_tools.retrieve_model(
       model_name=FLAGS.model_name, hparam_updates=hparam_updates)
-  Globals.separate_instruments = wmodel.hparams.separate_instruments
+  hparams = wmodel.hparams
+  Globals.separate_instruments = hparams.separate_instruments
 
   B = FLAGS.gen_batch_size
-  T, P, I = wmodel.hparams.raw_pianoroll_shape
+  T, P, I = hparams.raw_pianoroll_shape
   print B, T, P, I
-  wmodel.hparams.crop_piece_len = FLAGS.piece_length
-  T, P, I = wmodel.hparams.raw_pianoroll_shape
+  hparams.crop_piece_len = FLAGS.piece_length
+  T, P, I = hparams.raw_pianoroll_shape
   print B, T, P, I
   shape = [B, T, P, I]
 
@@ -45,17 +48,38 @@ def main(unused_argv):
 
   Globals.bamboo.log(pianorolls=pianorolls, masks=masks, predictions=pianorolls)
 
-  label = "sample_%s_%s_%s_T%g_l%i_%.2fmin" % (timestamp, FLAGS.strategy, wmodel.hparams.model_name, FLAGS.temperature, FLAGS.piece_length, time_taken)
-  path = os.path.join(FLAGS.generation_output_dir, label + ".npz")
-  print "Writing to", path
-  Globals.bamboo.dump(path)
+  # Creates a folder for storing this sampling run.
+  label = "sample_%s_%s_%s_T%g_l%i_%.2fmin" % (timestamp, FLAGS.strategy, 
+    hparams.model_name, FLAGS.temperature, FLAGS.piece_length, time_taken)
+  basepath = os.path.join(FLAGS.generation_output_dir, label)
+  os.makedirs(basepath)
+  
+  # Creates a folder of generated midi.
+  midi_path = os.path.join(basepath, "midi")
+  os.makedirs(midi_path)
+  for i, pianoroll in enumerate(pianorolls):  
+    midi_data = pianoroll_to_midi(
+        pianoroll, qpm=hparams.qpm, quantization_level=hparams.quantization_level, pitch_offset=hparams.pitch_ranges[0])
+    midi_fpath = os.path.join(midi_path, "%s_%i.midi" % (label, i))
+    print midi_fpath
+    midi_data.write(midi_fpath)
+
+  # Stores generated pianorolls.
+  np.savez_compressed(os.path.join(basepath, 'final_pianorolls.npz'), pianorolls=pianorolls)
+
+  # Stores all the (intermediate) steps.
+  path = os.path.join(basepath, 'intermediate_steps.npz')
+
+  with util.timing('writing_out_sample_npz'):
+    print "Writing to", path
+    Globals.bamboo.dump(path)
 
 
 # decorator for timing and Globals.bamboo.log structuring
-def instrument(label, subsample_factor=None):
+def instrument(label, printon=True, subsample_factor=None):
   def decorator(fn):
     def wrapped_fn(*args, **kwargs):
-      with util.timing(label):
+      with util.timing(label, printon=printon):
         with Globals.bamboo.scope(label, subsample_factor=subsample_factor):
           return fn(*args, **kwargs)
     return wrapped_fn
@@ -328,7 +352,7 @@ class BachSampler(BaseSampler):
   @instrument(key)
   def __call__(self, pianorolls, masks):
     print "Loading validation pieces from %s..." % self.wmodel.hparams.dataset
-    bach_pianorolls = data_tools.get_data_as_pianorolls(FLAGS.input_dir, self.wmodel.hparams, 'valid')
+    bach_pianorolls = data_tools.get_data_as_pianorolls(FLAGS.data_dir, self.wmodel.hparams, 'valid')
     shape = pianorolls.shape
     pianorolls = np.array([pianoroll[:shape[1]] for pianoroll in bach_pianorolls])[:shape[0]]
     Globals.bamboo.log(pianorolls=pianorolls, masks=masks, predictions=pianorolls)
@@ -361,7 +385,7 @@ class UniformRandomSampler(BaseSampler):
 class IndependentSampler(BaseSampler):
   key = "independent"
 
-  @instrument(key)
+  @instrument(key, printon=False)
   def __call__(self, pianorolls, masks):
     predictions = self.predict(pianorolls, masks)
     if Globals.separate_instruments:
