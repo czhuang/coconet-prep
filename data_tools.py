@@ -21,7 +21,7 @@ DATASET_PARAMS = {
         'batch_size': 12},
     'jsb-chorales-16th-instrs_separated': {
         'pitch_ranges': [36, 81], 'shortest_duration': 0.125,
-        'num_instruments', 'qpm': 60},
+        'num_instruments': 4, 'qpm': 60},
 }
 
 # TODO: not included in this version.
