@@ -290,10 +290,11 @@ class BasicAutofillCNNGraph(object):
     self._unmask = 1 - self._mask
     self._unmask *= non_pad_indicators 
     self._reduced_unmask_size = reduced_D - self._reduced_mask_size
-    tf.assert_equal(
+    check_unmask_count_equal_op = tf.assert_equal(
         self._reduced_unmask_size, tf.reduce_sum(self._unmask[:, :, 0, :]))
-    self._loss_unmask = tf.reduce_sum(
-        self._unmask * self._unreduced_loss) / self._reduced_unmask_size
+    with tf.control_dependencies([check_unmask_count_equal_op]):
+      self._loss_unmask = tf.reduce_sum(
+          self._unmask * self._unreduced_loss) / self._reduced_unmask_size
 
     # Check which loss to use as objective function.
     if hparams.optimize_mask_only:
