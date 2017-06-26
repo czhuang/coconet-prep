@@ -1,4 +1,5 @@
 import os, sys, time, contextlib, cPickle as pkl, gzip
+import re
 from collections import defaultdict
 from datetime import datetime
 import numpy as np
@@ -37,42 +38,61 @@ def main(unused_argv):
   print B, T, P, I
   shape = [B, T, P, I]
 
+  # Instantiates generation strategy.
   strategy = BaseStrategy.make(FLAGS.strategy, wmodel)
   Globals.bamboo = util.Bamboo()
 
+  # Generates.
   start_time = time.time()
   pianorolls = np.zeros(shape, dtype=np.float32)
   masks = np.ones(shape, dtype=np.float32)
   pianorolls = strategy(pianorolls, masks)
   time_taken = (time.time() - start_time) / 60.0
-
+  
+  # Logs final step, without predictions (which are pianorolls here).
   Globals.bamboo.log(pianorolls=pianorolls, masks=masks, predictions=pianorolls)
 
-  # Creates a folder for storing this sampling run.
+  # Creates a folder for storing the process of the sampling.
   label = "sample_%s_%s_%s_T%g_l%i_%.2fmin" % (timestamp, FLAGS.strategy, 
     hparams.model_name, FLAGS.temperature, FLAGS.piece_length, time_taken)
   basepath = os.path.join(FLAGS.generation_output_dir, label)
   os.makedirs(basepath)
   
-  # Creates a folder of generated midi.
-  midi_path = os.path.join(basepath, "midi")
-  os.makedirs(midi_path)
-  for i, pianoroll in enumerate(pianorolls):  
-    midi_data = pianoroll_to_midi(
-        pianoroll, qpm=hparams.qpm, quantization_level=hparams.quantization_level, pitch_offset=hparams.pitch_ranges[0])
-    midi_fpath = os.path.join(midi_path, "%s_%i.midi" % (label, i))
-    print midi_fpath
-    midi_data.write(midi_fpath)
-
-  # Stores generated pianorolls.
-  np.savez_compressed(os.path.join(basepath, 'final_pianorolls.npz'), pianorolls=pianorolls)
-
   # Stores all the (intermediate) steps.
   path = os.path.join(basepath, 'intermediate_steps.npz')
-
   with util.timing('writing_out_sample_npz'):
     print "Writing to", path
     Globals.bamboo.dump(path)
+  
+  # Makes function to save midi from pianorolls.
+  def save_midi_from_pianorolls(rolls, label, midi_path):
+    for i, pianoroll in enumerate(rolls):
+      midi_fpath = os.path.join(midi_path, "%s_%i.midi" % (label, i))
+      midi_data = pianoroll_to_midi(
+          pianoroll, qpm=hparams.qpm, quantization_level=hparams.quantization_level, 
+          pitch_offset=hparams.pitch_ranges[0])
+      print midi_fpath
+      midi_data.write(midi_fpath)
+
+  # Saves the results as midi and npy.    
+  midi_path = os.path.join(basepath, "midi")
+  os.makedirs(midi_path)
+  save_midi_from_pianorolls(pianorolls, label, midi_path)
+  np.save(os.path.join(basepath, "generated_result.npy"), pianorolls)
+
+  # Save the prime as midi and npy if in harmonization mode.
+  # First, checks the stored npz for the first (context) and last step.
+  foo = np.load(path)
+  for key in foo.keys():
+    if re.match(r"0_root/.*?_strategy/.*?_context/0_pianorolls", key):
+      context_rolls = foo[key]
+  if 'harm' in FLAGS.strategy:
+    # Only synthesize the one prime if in Midi-melody-prime mode.
+    primes = context_rolls
+    if 'Melody' in FLAGS.strategy:
+      primes = [context_rolls[0]]
+    save_midi_from_pianorolls(primes, label + '_prime', midi_path)
+  np.save(os.path.join(basepath, "context.npy"), context_rolls)
 
 
 # decorator for timing and Globals.bamboo.log structuring
@@ -167,6 +187,8 @@ class HarmonizationStrategy(BaseStrategy):
                           for pianoroll, mask in zip(pianorolls, masks)])
       Globals.bamboo.log(pianorolls=context, masks=masks, predictions=context)
     pianorolls = gibbs(pianorolls, masks)
+    with Globals.bamboo.scope("result"):
+      Globals.bamboo.log(pianorolls=pianorolls, masks=masks, predictions=pianorolls)
 
     return pianorolls
 
