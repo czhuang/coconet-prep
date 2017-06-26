@@ -5,6 +5,8 @@ from datetime import datetime
 import numpy as np
 import tensorflow as tf
 
+import pretty_midi
+
 import mask_tools
 import retrieve_model_tools
 import data_tools
@@ -19,6 +21,9 @@ tf.app.flags.DEFINE_integer("piece_length", 32, "num of time steps in generated 
 tf.app.flags.DEFINE_string(
     "generation_output_dir", None,
     "Output directory for storing the generated Midi.")
+tf.app.flags.DEFINE_string(
+    "prime_midi_melody_fpath", None,
+    "Path to midi melody to be harmonized.")
 
 
 def main(unused_argv):
@@ -114,6 +119,76 @@ def instrument(label, printon=True, subsample_factor=None):
 class BaseStrategy(util.Factory):
   def __init__(self, wmodel):
     self.wmodel = wmodel
+
+class HarmonizeMidiMelodyStrategy(BaseStrategy):
+  key = "harmonizeMidiMelody"
+
+  def load_midi_melody(self):
+    midi = pretty_midi.PrettyMIDI(FLAGS.prime_midi_melody_fpath)
+    if len(midi.instruments) != 1:
+      raise ValueError(
+          'Only one melody/instrument allowed, %r given.' % (
+              len(midi.instruments)))
+    tempo_change_times, tempo_changes = midi.get_tempo_changes()
+    assert len(tempo_changes) == 1
+    tempo = tempo_changes[0]
+    assert tempo in [60., 120.]
+    #assert tempo_changes[0] == 60. or tempo_changes[0] == 120.
+    # qpm=60, 16th notes, time taken=1/60 * 1/4
+    # qpm=120, 16th notes, time taken=1/120 * /4
+    # for 16th in qpm=120 to be rendered correctly in qpm=60, fs=2
+    # shape: (128, t)
+    if tempo == 120.:
+      fs = 2 
+    elif tempo == 60.:
+      fs = 4
+    else:
+      assert False, 'Tempo %r not supported yet.' % tempo
+    # Returns matrix of shape (128, time) with summed velocities.
+    roll = midi.get_piano_roll(fs=fs)  # 16th notes
+    roll = np.where(roll>0, 1, 0)
+    print roll.shape
+    roll = roll.T
+    return roll
+  
+  def make_pianoroll_from_melody_roll(self, mroll, pitch_ranges,
+                                      requested_shape):
+    # mroll shape: time, pitch
+    # requested_shape: batch, time, pitch, instrument
+    B, T, P, I = requested_shape
+    print 'requested_shape', requested_shape
+    assert mroll.ndim == 2
+    assert mroll.shape[1] == 128
+    low, high = pitch_ranges
+    requested_range = high - low + 1
+    assert P == requested_range, '%r != %r' % (P, requested_range) 
+    if T != mroll.shape[0]:
+      print 'WARNING: requested T %r != prime T %r' % (T, mroll.shape[0])
+    rolls = np.zeros((B, mroll.shape[0], P, I), dtype=np.float32)
+    rolls[:, :, :, 0] = mroll[None, :, low:high+1]
+    print 'resulting shape', rolls.shape
+    return rolls
+
+  @instrument(key + "_strategy")
+  def __call__(self, pianorolls, masks):
+    mroll = self.load_midi_melody()
+    pianorolls = self.make_pianoroll_from_melody_roll(
+        mroll, self.wmodel.hparams.pitch_ranges, pianorolls.shape)
+    masks = HarmonizationMasker()(pianorolls.shape)
+    num_steps = np.max(numbers_of_masked_variables(masks))
+    print 'num_steps', num_steps
+    gibbs = GibbsSampler(num_steps=num_steps,
+                         masker=BernoulliMasker(),
+                         sampler=IndependentSampler(self.wmodel, temperature=FLAGS.temperature),
+                         schedule=YaoSchedule(pmin=0.1, pmax=0.9, alpha=0.7))
+
+    with Globals.bamboo.scope("context"):
+      context = np.array([mask_tools.apply_mask(pianoroll, mask)
+                          for pianoroll, mask in zip(pianorolls, masks)])
+      Globals.bamboo.log(pianorolls=context, masks=masks, predictions=context)
+    pianorolls = gibbs(pianorolls, masks)
+
+    return pianorolls
 
 class ScratchUpsamplingStrategy(BaseStrategy):
   key = "scratch_upsampling"
@@ -468,6 +543,7 @@ class GibbsSampler(BaseSampler):
     print 'shape', pianorolls.shape
     num_steps = (np.max(numbers_of_masked_variables(masks))
                  if self.num_steps is None else self.num_steps)
+    print 'num_steps', num_steps
 
     with Globals.bamboo.scope("sequence", subsample_factor=10):
       for s in range(num_steps):
